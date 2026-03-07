@@ -1,20 +1,28 @@
 {
-  "name": "9router-app",
+  "name": "9router-fdk",
   "version": "0.3.33",
   "description": "9Router web dashboard",
-  "private": true,
+  "bin": {
+    "9router-fdk": "./bin/cli.js"
+  },
+  "files": [
+    ".next/standalone",
+    "bin"
+  ],
   "scripts": {
     "dev": "next dev --webpack",
     "dev:alt": "next dev -p 20127 --webpack",
-    "build": "NODE_ENV=production next build --webpack",
-    "start": "NODE_ENV=production next start",
+    "build": "NODE_ENV=production next build --webpack && node ./bin/postbuild.js",
+    "start": "NODE_ENV=production node .next/standalone/server.js",
     "dev:bun": "bun --bun next dev --webpack",
     "build:bun": "NODE_ENV=production bun --bun next build --webpack",
-    "start:bun": "NODE_ENV=production bun ./.next/standalone/server.js"
+    "start:bun": "NODE_ENV=production bun ./.next/standalone/server.js",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "@xyflow/react": "^12.10.1",
+    "9router-fdk": "^0.3.33",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.6.2",
     "express": "^5.2.1",

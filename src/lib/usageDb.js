@@ -11,16 +11,7 @@ const isCloud = typeof caches !== 'undefined' || typeof caches === 'object';
 // Get app name from root package.json config
 function getAppName() {
   if (isCloud) return "9router"; // Skip file system access in Workers
-
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  // Look for root package.json (monorepo root)
-  const rootPkgPath = path.resolve(__dirname, "../../../package.json");
-  try {
-    const pkg = JSON.parse(fs.readFileSync(rootPkgPath, "utf-8"));
-    return pkg.config?.appName || "9router";
-  } catch {
-    return "9router";
-  }
+  return "9router-fdk";
 }
 
 // Get user data directory based on platform
