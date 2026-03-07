@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Card, Button, Select } from "@/shared/components";
+import { Card, Button, Select, Input } from "@/shared/components";
 
 function extractContent(data) {
   const content = data?.choices?.[0]?.message?.content;
@@ -81,7 +81,12 @@ export default function PlaygroundPage() {
     try {
       const start = performance.now();
       const headers = { "Content-Type": "application/json" };
-      if (authHeader) headers.Authorization = authHeader;
+      const authValue = authHeader.trim();
+      if (authValue) {
+        headers.Authorization = authValue.toLowerCase().startsWith("bearer ")
+          ? authValue
+          : `Bearer ${authValue}`;
+      }
 
       const res = await fetch("/api/v1/chat/completions", {
         method: "POST",
@@ -141,6 +146,15 @@ export default function PlaygroundPage() {
               className="w-full py-2 px-3 text-sm text-text-main bg-white dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-md placeholder-text-muted/60 focus:ring-1 focus:ring-primary/30 focus:border-primary/50 focus:outline-none transition-all shadow-inner disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
+
+          <Input
+            label="Authorization (optional)"
+            placeholder="Bearer sk-..."
+            value={authHeader}
+            onChange={(e) => setAuthHeader(e.target.value)}
+            disabled={running}
+            hint="Auto-filled when requireApiKey is enabled and an active key exists."
+          />
 
           <div className="flex items-center gap-3">
             <Button
