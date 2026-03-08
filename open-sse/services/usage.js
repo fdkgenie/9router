@@ -37,25 +37,30 @@ const CLAUDE_CONFIG = {
  * @returns {Object} Usage data with quotas
  */
 export async function getUsageForProvider(connection) {
-  const { provider, accessToken, providerSpecificData } = connection;
+  const { provider, accessToken, apiKey, providerSpecificData } = connection;
+
+  // Support both accessToken and apiKey fields
+  const token = accessToken || apiKey;
 
   switch (provider) {
     case "github":
-      return await getGitHubUsage(accessToken, providerSpecificData);
+      return await getGitHubUsage(token, providerSpecificData);
     case "gemini-cli":
-      return await getGeminiUsage(accessToken);
+      return await getGeminiUsage(token);
     case "antigravity":
-      return await getAntigravityUsage(accessToken);
+      return await getAntigravityUsage(token);
     case "claude":
-      return await getClaudeUsage(accessToken);
+      return await getClaudeUsage(token);
     case "codex":
-      return await getCodexUsage(accessToken);
+      return await getCodexUsage(token);
     case "kiro":
-      return await getKiroUsage(accessToken, providerSpecificData);
+      return await getKiroUsage(token, providerSpecificData);
     case "qwen":
-      return await getQwenUsage(accessToken, providerSpecificData);
+      return await getQwenUsage(token, providerSpecificData);
     case "iflow":
-      return await getIflowUsage(accessToken);
+      return await getIflowUsage(token);
+    case "ramclouds":
+      return await getRamcloudsUsage(token);
     default:
       return { message: `Usage API not implemented for ${provider}` };
   }
@@ -640,6 +645,79 @@ async function getIflowUsage(accessToken) {
     return { message: "iFlow connected. Usage tracked per request." };
   } catch (error) {
     return { message: "Unable to fetch iFlow usage." };
+  }
+}
+
+/**
+ * Ramclouds Usage (New-API based)
+ * Fetches quota information from the log/token endpoint
+ */
+async function getRamcloudsUsage(apiKey) {
+  try {
+    const response = await fetch("https://ramclouds.me/api/log/token?p=0&page_size=1", {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 403 || response.status === 401) {
+        return {
+          message: "Ramclouds API key invalid or expired",
+          quotas: {}
+        };
+      }
+      throw new Error(`Ramclouds API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.data || data.data.length === 0) {
+      return {
+        message: "No usage data available yet",
+        plan: "Active",
+        quotas: {
+          tokens: {
+            used: 0,
+            total: 0,
+            remaining: 0,
+            unlimited: false,
+          }
+        }
+      };
+    }
+
+    // Parse subscription info from the latest log entry
+    const latestLog = data.data[0];
+    const other = JSON.parse(latestLog.other || "{}");
+
+    const subscriptionTotal = other.subscription_total || 0;
+    const subscriptionUsed = other.subscription_used || 0;
+    const subscriptionRemain = other.subscription_remain || 0;
+
+    // Convert to USD (500,000 tokens = $1 USD based on quota_per_unit from status API)
+    const quotaPerUnit = 500000;
+    const usedUSD = (subscriptionUsed / quotaPerUnit).toFixed(2);
+    const totalUSD = (subscriptionTotal / quotaPerUnit).toFixed(2);
+    const remainingUSD = (subscriptionRemain / quotaPerUnit).toFixed(2);
+
+    return {
+      plan: other.subscription_plan_title || "Unknown",
+      quotas: {
+        tokens: {
+          used: subscriptionUsed,
+          total: subscriptionTotal,
+          remaining: subscriptionRemain,
+          unlimited: false,
+          usedUSD,
+          totalUSD,
+          remainingUSD,
+        }
+      }
+    };
+  } catch (error) {
+    return { message: `Ramclouds error: ${error.message}` };
   }
 }
 

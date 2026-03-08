@@ -13,7 +13,7 @@ async function refreshAndUpdateCredentials(connection) {
 
   // Build credentials object from connection
   const credentials = {
-    accessToken: connection.accessToken,
+    accessToken: connection.accessToken || connection.apiKey, // Support both accessToken and apiKey
     refreshToken: connection.refreshToken,
     expiresAt: connection.expiresAt || connection.tokenExpiresAt,
     providerSpecificData: connection.providerSpecificData,
@@ -100,20 +100,17 @@ export async function GET(request, { params }) {
       return Response.json({ error: "Connection not found" }, { status: 404 });
     }
 
-    // Only OAuth connections have usage APIs
-    if (connection.authType !== "oauth") {
-      return Response.json({ message: "Usage not available for API key connections" });
-    }
-
-    // Refresh credentials if needed using executor
-    try {
-      const result = await refreshAndUpdateCredentials(connection);
-      connection = result.connection;
-    } catch (refreshError) {
-      console.error("[Usage API] Credential refresh failed:", refreshError);
-      return Response.json({
-        error: `Credential refresh failed: ${refreshError.message}`
-      }, { status: 401 });
+    // For OAuth connections, refresh credentials if needed
+    if (connection.authType === "oauth") {
+      try {
+        const result = await refreshAndUpdateCredentials(connection);
+        connection = result.connection;
+      } catch (refreshError) {
+        console.error("[Usage API] Credential refresh failed:", refreshError);
+        return Response.json({
+          error: `Credential refresh failed: ${refreshError.message}`
+        }, { status: 401 });
+      }
     }
 
     // Fetch usage from provider API
