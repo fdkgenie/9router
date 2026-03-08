@@ -1,6 +1,6 @@
 {
   "name": "9router-fdk",
-  "version": "0.3.33",
+  "version": "0.3.33-b",
   "description": "9Router web dashboard",
   "bin": {
     "9router-fdk": "./bin/cli.js"
