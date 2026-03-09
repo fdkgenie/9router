@@ -364,12 +364,10 @@ function openBrowser(url) {
   });
 }
 
-// Find standalone server
-const standaloneDir = path.join(__dirname, "..", ".next", "standalone");
-const serverPath = path.join(standaloneDir, "server.js");
-
-if (!fs.existsSync(serverPath)) {
-  console.error("Error: Standalone build not found.");
+// Check if Next.js build exists
+const nextDir = path.join(__dirname, "..", ".next");
+if (!fs.existsSync(nextDir)) {
+  console.error("Error: Next.js build not found.");
   console.error("Please run 'npm run build' first.");
   process.exit(1);
 }
@@ -423,8 +421,9 @@ function startServer(latestVersion) {
   const displayHost = host === DEFAULT_HOST ? "localhost" : host;
   const url = `http://${displayHost}:${port}/dashboard`;
 
-  const server = spawn(RUNTIME, [serverPath], {
-    cwd: standaloneDir,
+  const nextBin = path.join(__dirname, "..", "node_modules", ".bin", "next");
+  const server = spawn(RUNTIME, [nextBin, "start", "-p", port, "-H", host], {
+    cwd: path.join(__dirname, ".."),
     stdio: showLog ? "inherit" : "ignore",
     detached: true,
     env: {
