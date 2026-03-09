@@ -1,13 +1,14 @@
 {
   "name": "9router-fdk",
-  "version": "0.3.34",
+  "version": "0.3.35",
   "description": "9Router web dashboard",
   "bin": {
-    "9router-fdk": "./bin/cli.js"
+    "9router-fdk": "bin/cli.js"
   },
   "files": [
     ".next/standalone",
-    "bin"
+    "bin",
+    "src/cli"
   ],
   "scripts": {
     "dev": "next dev --webpack",
