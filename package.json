@@ -13,7 +13,7 @@
   "scripts": {
     "dev": "next dev --webpack",
     "dev:alt": "next dev -p 20127 --webpack",
-    "build": "NODE_ENV=production next build --webpack && node ./bin/postbuild.js",
+    "build": "NODE_ENV=production next build --webpack",
     "start": "node ./bin/cli.js",
     "start:tray": "node ./bin/cli.js --tray",
     "dev:bun": "bun --bun next dev --webpack",
