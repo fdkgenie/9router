@@ -320,7 +320,12 @@ async function startServer(apiKey, sudoPassword) {
     }
   }
 
-  // Step 1: Auto-migration - Generate Root CA if not exists
+  // Step 1: Ensure MITM directory exists
+  if (!fs.existsSync(MITM_DIR)) {
+    fs.mkdirSync(MITM_DIR, { recursive: true });
+  }
+
+  // Step 2: Auto-migration - Generate Root CA if not exists
   const rootCACertPath = path.join(MITM_DIR, "rootCA.crt");
   const rootCAKeyPath = path.join(MITM_DIR, "rootCA.key");
 
@@ -341,6 +346,20 @@ async function startServer(apiKey, sudoPassword) {
     }
     await installCert(password, rootCACertPath);
     console.log("✅ Root CA installed successfully");
+  }
+
+  // Step 1.6: Fix ownership of MITM_DIR if owned by root
+  if (!IS_WIN) {
+    try {
+      const stats = fs.statSync(MITM_DIR);
+      if (stats.uid === 0) {
+        const currentUser = os.userInfo().username;
+        const { execWithPassword } = require("./dns/dnsConfig");
+        await execWithPassword(`chown -R ${currentUser} "${MITM_DIR}"`, sudoPassword);
+      }
+    } catch (err) {
+      console.log("[MITM] Warning: Could not fix directory ownership:", err.message);
+    }
   }
 
   // Step 2: Spawn server (Root CA already installed in Step 1.5)

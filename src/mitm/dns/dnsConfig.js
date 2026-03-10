@@ -135,7 +135,8 @@ async function addDNSEntry(tool, sudoPassword) {
     return;
   }
 
-  const entries = entriesToAdd.map(h => `127.0.0.1 ${h}`).join("\n");
+  // Add both IPv4 and IPv6 entries to prevent IPv6 bypass
+  const entries = entriesToAdd.map(h => `127.0.0.1 ${h}\n::1 ${h}`).join("\n");
 
   try {
     if (IS_WIN) {
