@@ -11,7 +11,7 @@
     "src/cli"
   ],
   "scripts": {
-    "dev": "next dev --webpack",
+    "dev": "next dev -p 20127 --webpack",
     "dev:alt": "next dev -p 20127 --webpack",
     "build": "NODE_ENV=production next build --webpack",
     "start": "node ./bin/cli.js",
