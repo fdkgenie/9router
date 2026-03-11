@@ -82,6 +82,8 @@ export async function GET() {
     const { getSettings } = await import("@/lib/localDb");
     const routerSettings = await getSettings();
 
+    console.log(`[Amp CLI] GET settings: installed=${isInstalled}, has9Router=${has9Router}`);
+
     return NextResponse.json({
       installed: true,
       settings: settings,
@@ -92,7 +94,7 @@ export async function GET() {
       modelMappings: routerSettings.ampModelMappings || {},
     });
   } catch (error) {
-    console.log("Error checking amp settings:", error);
+    console.error("[Amp CLI] Error checking amp settings:", error);
     return NextResponse.json(
       { error: "Failed to check amp settings" },
       { status: 500 }
@@ -143,18 +145,39 @@ export async function POST(request) {
     // Write settings
     await fs.writeFile(settingsPath, JSON.stringify(newSettings, null, 2));
 
+    // Read current secrets
+    let currentSecrets = {};
+    try {
+      const content = await fs.readFile(secretsPath, "utf-8");
+      currentSecrets = JSON.parse(content);
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        throw error;
+      }
+    }
+
+    // Update secrets with API key for this URL
+    const secretKey = `apiKey@${url}`;
+    currentSecrets[secretKey] = localApiKey;
+
+    // Write secrets
+    await fs.writeFile(secretsPath, JSON.stringify(currentSecrets, null, 2));
+
     // Always save model mappings to 9router settings (even if empty)
     const { updateSettings } = await import("@/lib/localDb");
     await updateSettings({
       ampModelMappings: modelMappings || {},
     });
 
+    console.log(`[Amp CLI] Settings applied successfully: ${url}`);
+    console.log(`[Amp CLI] Model mappings saved:`, Object.keys(modelMappings || {}).length, "models");
+
     return NextResponse.json({
       success: true,
       message: "Settings updated successfully",
     });
   } catch (error) {
-    console.log("Error updating amp settings:", error);
+    console.error("[Amp CLI] Error updating amp settings:", error);
     return NextResponse.json(
       { error: "Failed to update amp settings" },
       { status: 500 }
@@ -201,12 +224,14 @@ export async function DELETE() {
       }
     }
 
+    console.log(`[Amp CLI] Settings reset successfully`);
+
     return NextResponse.json({
       success: true,
       message: "Settings reset successfully",
     });
   } catch (error) {
-    console.log("Error resetting amp settings:", error);
+    console.error("[Amp CLI] Error resetting amp settings:", error);
     return NextResponse.json(
       { error: "Failed to reset amp settings" },
       { status: 500 }

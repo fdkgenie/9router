@@ -23,6 +23,7 @@ export default function AmpToolCard({
   const [checkingAmp, setCheckingAmp] = useState(false);
   const [applying, setApplying] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [loggingIn, setLoggingIn] = useState(false);
   const [message, setMessage] = useState(null);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [selectedApiKey, setSelectedApiKey] = useState("");
@@ -170,6 +171,47 @@ export default function AmpToolCard({
       setMessage({ type: "error", text: error.message });
     } finally {
       setRestoring(false);
+    }
+  };
+
+  const handleAmpLogin = async () => {
+    setLoggingIn(true);
+    setMessage(null);
+    try {
+      // Get key from dropdown or use default
+      const keyToUse = selectedApiKey?.trim()
+        || (apiKeys?.length > 0 ? apiKeys[0].key : null);
+
+      if (!keyToUse) {
+        setMessage({ type: "error", text: "Please select or create an API key first" });
+        return;
+      }
+
+      // Request login from Amp
+      const res = await fetch("/api/amp-cli-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: keyToUse }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        // Open auth URL in new window
+        if (data.authUrl) {
+          window.open(data.authUrl, "_blank");
+          setMessage({
+            type: "success",
+            text: `Login initiated! Verification code: ${data.verificationCode}. Complete authentication in the opened window.`
+          });
+        }
+      } else {
+        setMessage({ type: "error", text: data.error || "Failed to initiate login" });
+      }
+    } catch (error) {
+      setMessage({ type: "error", text: error.message });
+    } finally {
+      setLoggingIn(false);
     }
   };
 
@@ -369,6 +411,9 @@ export default function AmpToolCard({
               <div className="flex items-center gap-2">
                 <Button variant="primary" size="sm" onClick={handleApplySettings} loading={applying}>
                   <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleAmpLogin} loading={loggingIn} disabled={!selectedApiKey && apiKeys?.length === 0}>
+                  <span className="material-symbols-outlined text-[14px] mr-1">login</span>Amp Login
                 </Button>
                 <Button variant="outline" size="sm" onClick={handleResetSettings} disabled={!ampStatus?.has9Router} loading={restoring}>
                   <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
