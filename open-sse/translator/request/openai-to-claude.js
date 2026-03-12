@@ -120,7 +120,11 @@ export function openaiToClaudeRequest(model, body, stream) {
       // Pass-through built-in tools (e.g. web_search_20250305) without prefix or conversion
       const toolType = tool.type;
       if (toolType && toolType !== "function") {
-        result.tools.push(tool);
+        const builtinTool = { ...tool };
+        if (builtinTool.defer_loading && builtinTool.cache_control) {
+          delete builtinTool.cache_control;
+        }
+        result.tools.push(builtinTool);
         continue;
       }
 
@@ -141,7 +145,13 @@ export function openaiToClaudeRequest(model, body, stream) {
     }
 
     if (result.tools.length > 0) {
-      result.tools[result.tools.length - 1].cache_control = { type: "ephemeral", ttl: "1h" };
+      for (let i = result.tools.length - 1; i >= 0; i--) {
+        const tool = result.tools[i];
+        if (!tool?.defer_loading) {
+          tool.cache_control = { type: "ephemeral", ttl: "1h" };
+          break;
+        }
+      }
     }
   }
 

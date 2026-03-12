@@ -323,6 +323,35 @@ function closeToolCall(state, emit, idx) {
 function sendCompleted(state, emit) {
   if (!state.completedSent) {
     state.completedSent = true;
+
+    // Build output array from accumulated state so clients can iterate response.output
+    const output = [];
+    if (state.reasoningId) {
+      output.push({
+        id: state.reasoningId,
+        type: "reasoning",
+        summary: [{ type: "summary_text", text: state.reasoningBuf || "" }]
+      });
+    }
+    for (const idx in state.msgItemAdded) {
+      output.push({
+        id: `msg_${state.responseId}_${idx}`,
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", annotations: [], text: state.msgTextBuf[idx] || "" }]
+      });
+    }
+    for (const idx in state.funcCallIds) {
+      const callId = state.funcCallIds[idx];
+      output.push({
+        id: `fc_${callId}`,
+        type: "function_call",
+        call_id: callId,
+        name: state.funcNames[idx] || "",
+        arguments: state.funcArgsBuf[idx] || "{}"
+      });
+    }
+
     emit("response.completed", {
       type: "response.completed",
       response: {
@@ -331,7 +360,8 @@ function sendCompleted(state, emit) {
         created_at: state.created,
         status: "completed",
         background: false,
-        error: null
+        error: null,
+        output
       }
     });
   }

@@ -32,6 +32,8 @@ export default function MitmToolCard({
   const [sudoPassword, setSudoPassword] = useState("");
   const [pendingDnsAction, setPendingDnsAction] = useState(null);
   const [modelMappings, setModelMappings] = useState({});
+  const [alwaysFallbackEnabled, setAlwaysFallbackEnabled] = useState(false);
+  const [alwaysFallbackModel, setAlwaysFallbackModel] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [currentEditingAlias, setCurrentEditingAlias] = useState(null);
 
@@ -47,19 +49,26 @@ export default function MitmToolCard({
       if (res.ok) {
         const data = await res.json();
         if (Object.keys(data.aliases || {}).length > 0) setModelMappings(data.aliases);
+        setAlwaysFallbackEnabled(!!data.alwaysFallbackEnabled);
+        setAlwaysFallbackModel(data.alwaysFallbackModel || "");
       }
     } catch { /* ignore */ }
   };
 
-  const saveMappings = useCallback(async (mappings) => {
+  const saveMappings = useCallback(async (mappings, fallbackEnabled = alwaysFallbackEnabled, fallbackModel = alwaysFallbackModel) => {
     try {
       await fetch("/api/cli-tools/antigravity-mitm/alias", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tool: tool.id, mappings }),
+        body: JSON.stringify({
+          tool: tool.id,
+          mappings,
+          alwaysFallbackEnabled: !!fallbackEnabled,
+          alwaysFallbackModel: fallbackModel || "",
+        }),
       });
     } catch { /* ignore */ }
-  }, [tool.id]);
+  }, [tool.id, alwaysFallbackEnabled, alwaysFallbackModel]);
 
   const handleMappingBlur = (alias, value) => {
     saveMappings({ ...modelMappings, [alias]: value });
@@ -76,9 +85,25 @@ export default function MitmToolCard({
 
   const handleModelSelect = (model) => {
     if (!currentEditingAlias || model.isPlaceholder) return;
+
+    if (currentEditingAlias === "__always_fallback__") {
+      setAlwaysFallbackModel(model.value);
+      saveMappings(modelMappings, alwaysFallbackEnabled, model.value);
+      return;
+    }
+
     const updated = { ...modelMappings, [currentEditingAlias]: model.value };
     setModelMappings(updated);
     saveMappings(updated);
+  };
+
+  const handleAlwaysFallbackToggle = (checked) => {
+    setAlwaysFallbackEnabled(checked);
+    saveMappings(modelMappings, checked, alwaysFallbackModel);
+  };
+
+  const handleAlwaysFallbackModelBlur = (value) => {
+    saveMappings(modelMappings, alwaysFallbackEnabled, value);
   };
 
   // DNS toggle logic
@@ -190,6 +215,40 @@ export default function MitmToolCard({
                 <span>{message.text}</span>
               </div>
             )}
+
+            {/* Always fallback model */}
+            <div className="flex flex-col gap-2 border border-border rounded-lg p-2">
+              <label className="flex items-center gap-2 text-xs text-text-main">
+                <input
+                  type="checkbox"
+                  checked={alwaysFallbackEnabled}
+                  onChange={(e) => handleAlwaysFallbackToggle(e.target.checked)}
+                  disabled={!dnsActive}
+                />
+                <span>Always fallback model</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={alwaysFallbackModel}
+                  onChange={(e) => setAlwaysFallbackModel(e.target.value)}
+                  onBlur={(e) => handleAlwaysFallbackModelBlur(e.target.value)}
+                  placeholder="provider/model-id"
+                  disabled={!dnsActive || !alwaysFallbackEnabled}
+                  className={`flex-1 px-2 py-1.5 bg-surface rounded border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 ${(!dnsActive || !alwaysFallbackEnabled) ? "opacity-50 cursor-not-allowed" : ""}`}
+                />
+                <button
+                  onClick={() => openModelSelector("__always_fallback__")}
+                  disabled={!hasActiveProviders || !dnsActive || !alwaysFallbackEnabled}
+                  className={`px-2 py-1.5 rounded border text-xs transition-colors shrink-0 ${hasActiveProviders && dnsActive && alwaysFallbackEnabled ? "bg-surface border-border hover:border-primary cursor-pointer" : "opacity-50 cursor-not-allowed border-border"}`}
+                >
+                  Select
+                </button>
+              </div>
+              <p className="text-[10px] text-text-muted">
+                Checked: unmapped model will use fallback model. Unchecked: unmapped model passthrough.
+              </p>
+            </div>
 
             {/* Model Mappings */}
             {tool.defaultModels?.length > 0 && (

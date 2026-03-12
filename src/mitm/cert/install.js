@@ -26,18 +26,25 @@ async function checkCertInstalled(certPath) {
 function checkCertInstalledMac(certPath) {
   return new Promise((resolve) => {
     try {
-      const fingerprint = getCertFingerprint(certPath).replace(/:/g, "");
-      // security verify-cert returns 0 only if cert is trusted by system policy
-      exec(`security verify-cert -c "${certPath}" -p ssl -k /Library/Keychains/System.keychain 2>/dev/null`, (error) => {
-        if (!error) return resolve(true);
-        // Fallback: check if fingerprint appears in System keychain with trust
-        exec(`security dump-trust-settings -d 2>/dev/null | grep -i "${fingerprint}"`, (err2, stdout2) => {
-          resolve(!err2 && !!stdout2?.trim());
-        });
+      const fingerprint = getCertFingerprint(certPath).replace(/:/g, "").toUpperCase();
+      exec(`security find-certificate -Z -a -c "9Router MITM Root CA" /Library/Keychains/System.keychain 2>/dev/null`, (error, stdout) => {
+        if (error || !stdout) return resolve(false);
+        const normalized = stdout.toUpperCase();
+        resolve(normalized.includes(fingerprint));
       });
     } catch {
       resolve(false);
     }
+  });
+}
+
+function getMacSystemCertFingerprintsByCommonName(commonName) {
+  return new Promise((resolve) => {
+    exec(`security find-certificate -Z -a -c "${commonName}" /Library/Keychains/System.keychain 2>/dev/null`, (error, stdout) => {
+      if (error || !stdout) return resolve([]);
+      const matches = [...stdout.matchAll(/SHA-1 hash:\s*([A-F0-9]{40})/gi)];
+      resolve(matches.map(m => m[1].toUpperCase()));
+    });
   });
 }
 
@@ -74,6 +81,20 @@ async function installCert(sudoPassword, certPath) {
 }
 
 async function installCertMac(sudoPassword, certPath) {
+  const expectedFp = getCertFingerprint(certPath).replace(/:/g, "").toUpperCase();
+  const existingFps = await getMacSystemCertFingerprintsByCommonName("9Router MITM Root CA");
+
+  // Remove stale certs with same CN but different fingerprint to avoid trust mismatch
+  for (const fp of existingFps) {
+    if (fp !== expectedFp) {
+      try {
+        await execWithPassword(`security delete-certificate -Z "${fp}" /Library/Keychains/System.keychain`, sudoPassword);
+      } catch {
+        // best effort
+      }
+    }
+  }
+
   const command = `security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${certPath}"`;
   try {
     await execWithPassword(command, sudoPassword);

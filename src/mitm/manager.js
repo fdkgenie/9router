@@ -5,7 +5,7 @@ const os = require("os");
 const net = require("net");
 const https = require("https");
 const crypto = require("crypto");
-const { addDNSEntry, removeDNSEntry, removeAllDNSEntries, checkAllDNSStatus } = require("./dns/dnsConfig");
+const { addDNSEntry, removeDNSEntry, removeAllDNSEntries, checkAllDNSStatus, executeElevatedPowerShell, TOOL_HOSTS } = require("./dns/dnsConfig");
 
 const IS_WIN = process.platform === "win32";
 const { generateCert } = require("./cert/generate");
@@ -320,7 +320,31 @@ async function startServer(apiKey, sudoPassword) {
     }
   }
 
-  // Step 1: Auto-migration - Generate Root CA if not exists
+  // Step 1: Ensure MITM directory exists
+  if (!fs.existsSync(MITM_DIR)) {
+    fs.mkdirSync(MITM_DIR, { recursive: true });
+  }
+
+  // Migration: reuse legacy certs from ~/.9router/mitm if present
+  if (!IS_WIN) {
+    try {
+      const legacyMitmDir = path.join(os.homedir(), ".9router", "mitm");
+      const legacyRootCA = path.join(legacyMitmDir, "rootCA.crt");
+      const legacyRootKey = path.join(legacyMitmDir, "rootCA.key");
+      const currentRootCA = path.join(MITM_DIR, "rootCA.crt");
+      const currentRootKey = path.join(MITM_DIR, "rootCA.key");
+
+      if (!fs.existsSync(currentRootCA) && !fs.existsSync(currentRootKey) && fs.existsSync(legacyRootCA) && fs.existsSync(legacyRootKey)) {
+        fs.copyFileSync(legacyRootCA, currentRootCA);
+        fs.copyFileSync(legacyRootKey, currentRootKey);
+        console.log(`[MITM] Migrated Root CA from legacy path: ${legacyMitmDir}`);
+      }
+    } catch (err) {
+      console.log("[MITM] Warning: legacy cert migration failed:", err.message);
+    }
+  }
+
+  // Step 2: Auto-migration - Generate Root CA if not exists
   const rootCACertPath = path.join(MITM_DIR, "rootCA.crt");
   const rootCAKeyPath = path.join(MITM_DIR, "rootCA.key");
 
@@ -343,56 +367,44 @@ async function startServer(apiKey, sudoPassword) {
     console.log("✅ Root CA installed successfully");
   }
 
+  // Step 1.6: Fix ownership of MITM_DIR if owned by root
+  if (!IS_WIN) {
+    try {
+      const stats = fs.statSync(MITM_DIR);
+      if (stats.uid === 0) {
+        const currentUser = os.userInfo().username;
+        const { execWithPassword } = require("./dns/dnsConfig");
+        await execWithPassword(`chown -R ${currentUser} "${MITM_DIR}"`, sudoPassword);
+      }
+    } catch (err) {
+      console.log("[MITM] Warning: Could not fix directory ownership:", err.message);
+    }
+  }
+
   // Step 2: Spawn server (Root CA already installed in Step 1.5)
   if (IS_WIN) {
-    const hostsFile = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "drivers", "etc", "hosts");
-    const flagFile = path.join(os.tmpdir(), `mitm_ready_${Date.now()}.flag`);
     const psSQ = (s) => s.replace(/'/g, "''");
     const nodePs = psSQ(process.execPath);
     const serverPs = psSQ(SERVER_PATH);
-    const flagPs = psSQ(flagFile);
 
     const psScript = [
+      `$ErrorActionPreference = 'Stop'`,
       `$conn = Get-NetTCPConnection -LocalPort 443 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1`,
       `if ($conn -and $conn.OwningProcess -gt 4) { Stop-Process -Id $conn.OwningProcess -Force -ErrorAction SilentlyContinue }`,
       `Start-Sleep -Milliseconds 500`,
-      `$nodeCmd = 'set ROUTER_API_KEY=${psSQ(apiKey)}&& set NODE_ENV=production&& "${nodePs}" "${serverPs}"'`,
+      `$nodeCmd = 'set ROUTER_API_KEY=${psSQ(apiKey)}&& set ROUTER_PORT=${psSQ(process.env.PORT || "20127")}&& set NODE_ENV=production&& "${nodePs}" "${serverPs}"'`,
       `Start-Process cmd -ArgumentList '/c',$nodeCmd -WindowStyle Hidden`,
       `Start-Sleep -Milliseconds 500`,
-      `Set-Content -Path '${flagPs}' -Value 'ready' -Encoding UTF8`,
     ].join("\n");
 
     const tmpPs1 = path.join(os.tmpdir(), `mitm_start_${Date.now()}.ps1`);
     fs.writeFileSync(tmpPs1, psScript, "utf8");
-    const vbs = [
-      `Set oShell = CreateObject("Shell.Application")`,
-      `Dim ps`,
-      `ps = Chr(34) & "powershell.exe" & Chr(34)`,
-      `Dim args`,
-      `args = "-NoProfile -ExecutionPolicy Bypass -File " & Chr(34) & "${tmpPs1}" & Chr(34)`,
-      `oShell.ShellExecute ps, args, "", "runas", 1`,
-    ].join("\r\n");
-    const tmpVbs = path.join(os.tmpdir(), `mitm_uac_${Date.now()}.vbs`);
-    fs.writeFileSync(tmpVbs, vbs, "utf8");
-    spawn("wscript.exe", [tmpVbs], { stdio: "ignore", windowsHide: true, detached: true }).unref();
-
-    await new Promise((resolve, reject) => {
-      const deadline = Date.now() + 90000;
-      const poll = () => {
-        if (fs.existsSync(flagFile)) {
-          try { fs.unlinkSync(flagFile); fs.unlinkSync(tmpPs1); fs.unlinkSync(tmpVbs); } catch { /* ignore */ }
-          return resolve();
-        }
-        if (Date.now() > deadline) return reject(new Error("Timed out waiting for UAC confirmation."));
-        setTimeout(poll, 500);
-      };
-      poll();
-    });
+    await executeElevatedPowerShell(tmpPs1, 90000);
 
     if (_updateSettings) await _updateSettings({ mitmCertInstalled: true }).catch(() => { });
   } else {
     // Non-Windows: Root CA already installed in Step 1.5, just spawn server
-    const inlineCmd = `ROUTER_API_KEY='${apiKey}' NODE_ENV='production' '${process.execPath}' '${SERVER_PATH}'`;
+    const inlineCmd = `ROUTER_API_KEY='${apiKey}' ROUTER_PORT='${process.env.PORT || "20127"}' NODE_ENV='production' '${process.execPath}' '${SERVER_PATH}'`;
     serverProcess = spawn(
       "sudo", ["-S", "-E", "sh", "-c", inlineCmd],
       { detached: false, stdio: ["pipe", "pipe", "pipe"] }
@@ -451,38 +463,27 @@ async function startServer(apiKey, sudoPassword) {
  * Stop MITM server — removes ALL tool DNS entries first, then kills server
  */
 async function stopServer(sudoPassword) {
-  // Remove all DNS entries first (before killing server)
-  console.log("[MITM] Removing all DNS entries before stopping server...");
-  await removeAllDNSEntries(sudoPassword);
+  console.log("[MITM] Stopping server...");
 
+  // Kill server process
   const proc = serverProcess;
-  if (proc && !proc.killed) {
-    console.log("Stopping MITM server...");
-    killProcess(proc.pid, false, sudoPassword);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    if (isProcessAlive(proc.pid)) killProcess(proc.pid, true, sudoPassword);
-    serverProcess = null;
-    serverPid = null;
-  } else {
-    try {
-      if (fs.existsSync(PID_FILE)) {
-        const savedPid = parseInt(fs.readFileSync(PID_FILE, "utf-8").trim(), 10);
-        if (savedPid && isProcessAlive(savedPid)) {
-          console.log(`Killing MITM server (PID: ${savedPid})...`);
-          killProcess(savedPid, false, sudoPassword);
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          if (isProcessAlive(savedPid)) killProcess(savedPid, true, sudoPassword);
-        }
-      }
-    } catch { /* ignore */ }
-    serverProcess = null;
-    serverPid = null;
+  const pidToKill = proc && !proc.killed
+    ? proc.pid
+    : (() => { try { return parseInt(fs.readFileSync(PID_FILE, "utf-8").trim(), 10); } catch { return null; } })();
+
+  if (pidToKill && isProcessAlive(pidToKill)) {
+    console.log(`Killing MITM server (PID: ${pidToKill})...`);
+    killProcess(pidToKill, false, sudoPassword);
+    await new Promise(r => setTimeout(r, 1000));
+    if (isProcessAlive(pidToKill)) killProcess(pidToKill, true, sudoPassword);
   }
+  serverProcess = null;
+  serverPid = null;
 
   if (IS_WIN) {
+    // Single elevated script: clean DNS + flush — 1 UAC prompt only
     const hostsFile = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "drivers", "etc", "hosts");
     const psSQ = (s) => s.replace(/'/g, "''");
-    const { TOOL_HOSTS } = require("./dns/dnsConfig");
     const allHosts = Object.values(TOOL_HOSTS).flat();
 
     let hostsContent = "";
@@ -490,41 +491,25 @@ async function stopServer(sudoPassword) {
     const filtered = hostsContent.split(/\r?\n/)
       .filter(l => !allHosts.some(h => l.includes(h)))
       .join("\r\n");
-    const tmpHosts = path.join(os.tmpdir(), "mitm_hosts_clean.tmp");
+    const tmpHosts = path.join(os.tmpdir(), `mitm_hosts_clean_${Date.now()}.tmp`);
     fs.writeFileSync(tmpHosts, filtered, "utf8");
 
-    const flagFile = path.join(os.tmpdir(), "mitm_stop_done.flag");
     const psScript = [
-      `Copy-Item -Path '${psSQ(tmpHosts)}' -Destination '${psSQ(hostsFile)}' -Force`,
-      `& ipconfig /flushdns | Out-Null`,
-      `Remove-Item '${psSQ(tmpHosts)}' -ErrorAction SilentlyContinue`,
-      `Set-Content -Path '${psSQ(flagFile)}' -Value 'done' -Encoding UTF8`,
+      `$ErrorActionPreference = 'Stop'`,
+      `try {`,
+      `  Copy-Item -Path '${psSQ(tmpHosts)}' -Destination '${psSQ(hostsFile)}' -Force -ErrorAction Stop`,
+      `  ipconfig /flushdns | Out-Null`,
+      `  Remove-Item '${psSQ(tmpHosts)}' -ErrorAction SilentlyContinue`,
+      `} catch {`,
+      `  Remove-Item '${psSQ(tmpHosts)}' -ErrorAction SilentlyContinue`,
+      `}`,
     ].join("\n");
-    const tmpPs1 = path.join(os.tmpdir(), "mitm_stop.ps1");
+
+    const tmpPs1 = path.join(os.tmpdir(), `mitm_stop_${Date.now()}.ps1`);
     fs.writeFileSync(tmpPs1, psScript, "utf8");
-
-    const vbs = [
-      `Set oShell = CreateObject("Shell.Application")`,
-      `Dim args`,
-      `args = "-NoProfile -ExecutionPolicy Bypass -File " & Chr(34) & "${tmpPs1}" & Chr(34)`,
-      `oShell.ShellExecute "powershell.exe", args, "", "runas", 1`,
-    ].join("\r\n");
-    const tmpVbs = path.join(os.tmpdir(), "mitm_stop_uac.vbs");
-    fs.writeFileSync(tmpVbs, vbs, "utf8");
-    spawn("wscript.exe", [tmpVbs], { stdio: "ignore", windowsHide: true, detached: true }).unref();
-
-    await new Promise((resolve) => {
-      const deadline = Date.now() + 30000;
-      const poll = () => {
-        if (fs.existsSync(flagFile)) {
-          try { fs.unlinkSync(flagFile); fs.unlinkSync(tmpPs1); fs.unlinkSync(tmpVbs); } catch { /* ignore */ }
-          return resolve();
-        }
-        if (Date.now() > deadline) return resolve();
-        setTimeout(poll, 500);
-      };
-      poll();
-    });
+    await executeElevatedPowerShell(tmpPs1, 30000);
+  } else {
+    await removeAllDNSEntries(sudoPassword);
   }
 
   try { fs.unlinkSync(PID_FILE); } catch { /* ignore */ }
