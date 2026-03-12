@@ -16,7 +16,11 @@ const TARGET_HOSTS = [
 
 const LOCAL_PORT = 443;
 const ROUTER_PORT = process.env.ROUTER_PORT || process.env.PORT || "20127";
-const ROUTER_URL = process.env.ROUTER_URL || `http://localhost:${ROUTER_PORT}/v1/chat/completions`;
+// Strip any path from ROUTER_URL (legacy values may include /v1/chat/completions)
+const _rawRouterUrl = process.env.ROUTER_URL || `http://localhost:${ROUTER_PORT}`;
+const ROUTER_BASE = _rawRouterUrl.replace(/\/v1\/.*$/, "");
+const ROUTER_CHAT_URL = `${ROUTER_BASE}/v1/chat/completions`;
+const ROUTER_RESPONSES_URL = `${ROUTER_BASE}/v1/responses`;
 const API_KEY = process.env.ROUTER_API_KEY;
 const { DATA_DIR, MITM_DIR } = require("./paths");
 const DB_FILE = path.join(DATA_DIR, "db.json");
@@ -214,10 +218,15 @@ async function intercept(req, res, bodyBuffer, mappedModel) {
       body.stream = true;
     }
 
+    // Route /responses requests to the Responses API endpoint so the translator
+    // converts the response back to Responses API SSE format (not Chat Completions SSE).
+    const isResponsesApi = req.url.includes("/responses");
+    const routerUrl = isResponsesApi ? ROUTER_RESPONSES_URL : ROUTER_CHAT_URL;
+
     console.log("[MITM Server] Request stream mode:", body.stream);
     body.model = mappedModel;
 
-    const response = await fetch(ROUTER_URL, {
+    const response = await fetch(routerUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

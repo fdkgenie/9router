@@ -165,9 +165,12 @@ export function createSSEStream(options = {}) {
         if (!parsed) continue;
 
         if (parsed && parsed.done) {
-          const output = "data: [DONE]\n\n";
-          reqLogger?.appendConvertedChunk?.(output);
-          controller.enqueue(sharedEncoder.encode(output));
+          // Responses API SSE does not use [DONE] sentinel — stream ends after response.completed
+          if (sourceFormat !== FORMATS.OPENAI_RESPONSES) {
+            const output = "data: [DONE]\n\n";
+            reqLogger?.appendConvertedChunk?.(output);
+            controller.enqueue(sharedEncoder.encode(output));
+          }
           continue;
         }
 
@@ -333,9 +336,12 @@ export function createSSEStream(options = {}) {
           }
         }
 
-        const doneOutput = "data: [DONE]\n\n";
-        reqLogger?.appendConvertedChunk?.(doneOutput);
-        controller.enqueue(sharedEncoder.encode(doneOutput));
+        // Responses API SSE does not use [DONE] sentinel — stream ends after response.completed
+        if (sourceFormat !== FORMATS.OPENAI_RESPONSES) {
+          const doneOutput = "data: [DONE]\n\n";
+          reqLogger?.appendConvertedChunk?.(doneOutput);
+          controller.enqueue(sharedEncoder.encode(doneOutput));
+        }
 
         if (!hasValidUsage(state?.usage) && totalContentLength > 0) {
           state.usage = estimateUsage(body, totalContentLength, sourceFormat);
