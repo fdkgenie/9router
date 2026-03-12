@@ -5,6 +5,7 @@ data/
 
 # Development
 src/
+!src/cli/
 docs/
 test/
 agents/
@@ -25,17 +26,9 @@ postcss.config.mjs
 next.config.mjs
 tsconfig.json
 
-# Build artifacts - only include minimal necessary files
+# Build artifacts that shouldn't be published
 .next/cache/
 .next/standalone/data/
-.next/standalone/.next/cache/
-.next/standalone/.next/server/
-.next/standalone/.next/static/
-.next/standalone/node_modules/
-.next/standalone/src/
-.next/standalone/public/
-.next/standalone/package.json
-.next/standalone/package-lock.json
 
 
 
