@@ -10,11 +10,13 @@ const INTERNAL_REQUEST_HEADER = { name: "x-request-source", value: "local" };
 const TARGET_HOSTS = [
   "daily-cloudcode-pa.googleapis.com",
   "cloudcode-pa.googleapis.com",
+  "daily-cloudcode-pa.sandbox.googleapis.com",
   "api.individual.githubcopilot.com",
 ];
 
 const LOCAL_PORT = 443;
-const ROUTER_URL = "http://localhost:20127/v1/chat/completions";
+const ROUTER_PORT = process.env.ROUTER_PORT || process.env.PORT || "20127";
+const ROUTER_URL = process.env.ROUTER_URL || `http://localhost:${ROUTER_PORT}/v1/chat/completions`;
 const API_KEY = process.env.ROUTER_API_KEY;
 const { DATA_DIR, MITM_DIR } = require("./paths");
 const DB_FILE = path.join(DATA_DIR, "db.json");
@@ -144,7 +146,7 @@ function getMappedModel(tool, model) {
 function getToolForHost(host) {
   const h = (host || "").split(":")[0];
   if (h === "api.individual.githubcopilot.com") return "copilot";
-  if (h === "daily-cloudcode-pa.googleapis.com" || h === "cloudcode-pa.googleapis.com") return "antigravity";
+  if (h === "daily-cloudcode-pa.googleapis.com" || h === "cloudcode-pa.googleapis.com" || h === "daily-cloudcode-pa.sandbox.googleapis.com") return "antigravity";
   return null;
 }
 

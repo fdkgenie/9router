@@ -325,6 +325,25 @@ async function startServer(apiKey, sudoPassword) {
     fs.mkdirSync(MITM_DIR, { recursive: true });
   }
 
+  // Migration: reuse legacy certs from ~/.9router/mitm if present
+  if (!IS_WIN) {
+    try {
+      const legacyMitmDir = path.join(os.homedir(), ".9router", "mitm");
+      const legacyRootCA = path.join(legacyMitmDir, "rootCA.crt");
+      const legacyRootKey = path.join(legacyMitmDir, "rootCA.key");
+      const currentRootCA = path.join(MITM_DIR, "rootCA.crt");
+      const currentRootKey = path.join(MITM_DIR, "rootCA.key");
+
+      if (!fs.existsSync(currentRootCA) && !fs.existsSync(currentRootKey) && fs.existsSync(legacyRootCA) && fs.existsSync(legacyRootKey)) {
+        fs.copyFileSync(legacyRootCA, currentRootCA);
+        fs.copyFileSync(legacyRootKey, currentRootKey);
+        console.log(`[MITM] Migrated Root CA from legacy path: ${legacyMitmDir}`);
+      }
+    } catch (err) {
+      console.log("[MITM] Warning: legacy cert migration failed:", err.message);
+    }
+  }
+
   // Step 2: Auto-migration - Generate Root CA if not exists
   const rootCACertPath = path.join(MITM_DIR, "rootCA.crt");
   const rootCAKeyPath = path.join(MITM_DIR, "rootCA.key");
@@ -373,7 +392,7 @@ async function startServer(apiKey, sudoPassword) {
       `$conn = Get-NetTCPConnection -LocalPort 443 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1`,
       `if ($conn -and $conn.OwningProcess -gt 4) { Stop-Process -Id $conn.OwningProcess -Force -ErrorAction SilentlyContinue }`,
       `Start-Sleep -Milliseconds 500`,
-      `$nodeCmd = 'set ROUTER_API_KEY=${psSQ(apiKey)}&& set NODE_ENV=production&& "${nodePs}" "${serverPs}"'`,
+      `$nodeCmd = 'set ROUTER_API_KEY=${psSQ(apiKey)}&& set ROUTER_PORT=${psSQ(process.env.PORT || "20127")}&& set NODE_ENV=production&& "${nodePs}" "${serverPs}"'`,
       `Start-Process cmd -ArgumentList '/c',$nodeCmd -WindowStyle Hidden`,
       `Start-Sleep -Milliseconds 500`,
     ].join("\n");
@@ -385,7 +404,7 @@ async function startServer(apiKey, sudoPassword) {
     if (_updateSettings) await _updateSettings({ mitmCertInstalled: true }).catch(() => { });
   } else {
     // Non-Windows: Root CA already installed in Step 1.5, just spawn server
-    const inlineCmd = `ROUTER_API_KEY='${apiKey}' NODE_ENV='production' '${process.execPath}' '${SERVER_PATH}'`;
+    const inlineCmd = `ROUTER_API_KEY='${apiKey}' ROUTER_PORT='${process.env.PORT || "20127"}' NODE_ENV='production' '${process.execPath}' '${SERVER_PATH}'`;
     serverProcess = spawn(
       "sudo", ["-S", "-E", "sh", "-c", inlineCmd],
       { detached: false, stdio: ["pipe", "pipe", "pipe"] }

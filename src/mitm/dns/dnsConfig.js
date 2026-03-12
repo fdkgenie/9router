@@ -5,7 +5,7 @@ const os = require("os");
 
 // Per-tool DNS hosts mapping
 const TOOL_HOSTS = {
-  antigravity: ["daily-cloudcode-pa.googleapis.com", "cloudcode-pa.googleapis.com"],
+  antigravity: ["daily-cloudcode-pa.googleapis.com", "cloudcode-pa.googleapis.com", "daily-cloudcode-pa.sandbox.googleapis.com"],
   copilot: ["api.individual.githubcopilot.com"],
 };
 
