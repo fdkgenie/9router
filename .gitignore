@@ -48,6 +48,7 @@ source/*
 .cursor/*
 docs/*
 !docs/ARCHITECTURE.md
+!docs/AMP_CLI_IMPLEMENTATION_REPORT.md
 test/*
 open-sse/test/*
 RM.vn.md
