@@ -6,9 +6,12 @@
     "9router-fdk": "bin/cli.cjs"
   },
   "files": [
-    ".next/standalone",
     "bin",
-    "src/cli"
+    "src",
+    "public",
+    "next.config.mjs",
+    "postcss.config.mjs",
+    "tailwind.config.js"
   ],
   "scripts": {
     "dev": "next dev -p 20127",
