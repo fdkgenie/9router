@@ -45,6 +45,18 @@ function createSpinner(text) {
 const pkg = require("../package.json");
 const args = process.argv.slice(2);
 
+// Pre-load CLI modules at the top level
+let selectMenu, clearScreen, getEndpoint, startTerminalUI, initTray, killTray;
+try {
+  ({ selectMenu } = require("../src/cli/utils/input.cjs"));
+  ({ clearScreen } = require("../src/cli/utils/display.cjs"));
+  ({ getEndpoint } = require("../src/cli/utils/endpoint.cjs"));
+  ({ startTerminalUI } = require("../src/cli/terminalUI.cjs"));
+  ({ initTray, killTray } = require("../src/cli/tray/tray.cjs"));
+} catch (e) {
+  // Modules will be loaded when needed
+}
+
 // Configuration constants
 const APP_NAME = pkg.name;
 const DEFAULT_PORT = 20127;
@@ -379,10 +391,6 @@ const workingDir = isStandalone ? path.join(__dirname, "..", ".next", "standalon
 
 // Show interface selection menu
 async function showInterfaceMenu(latestVersion) {
-  const { selectMenu } = require("../src/cli/utils/input.cjs");
-  const { clearScreen } = require("../src/cli/utils/display.cjs");
-  const { getEndpoint } = require("../src/cli/utils/endpoint.cjs");
-  
   clearScreen();
   
   const displayHost = host === DEFAULT_HOST ? "localhost" : host;
@@ -445,8 +453,7 @@ function startServer(latestVersion) {
     isCleaningUp = true;
     try {
       try {
-        const { killTray } = require("../src/cli/tray/tray.cjs");
-        killTray();
+        if (killTray) killTray();
       } catch (e) {}
       if (server.pid) {
         process.kill(server.pid, "SIGKILL");
@@ -494,7 +501,6 @@ function startServer(latestVersion) {
     if (trayMode) {
       console.log("Starting in tray mode...\n");
       try {
-        const { initTray } = require("../src/cli/tray/tray.cjs");
         const tray = await initTray({
           port,
           onQuit: () => {
@@ -533,12 +539,10 @@ function startServer(latestVersion) {
         console.log(`Server running at: ${url}`);
         console.log("Press Ctrl+C to stop\n");
       } else if (choice === "terminal") {
-        const { startTerminalUI } = require("../src/cli/terminalUI.cjs");
         await startTerminalUI(port);
       } else if (choice === "hide") {
         console.log("\n🔔 Hiding to system tray...\n");
         try {
-          const { initTray } = require("../src/cli/tray/tray.cjs");
           const tray = await initTray({
             port,
             onQuit: () => {
