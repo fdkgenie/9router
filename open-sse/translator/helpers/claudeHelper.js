@@ -173,13 +173,21 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null) {
       body.tools = body.tools.filter(tool => !tool.type || tool.type === "function");
     }
 
-    body.tools = body.tools.map((tool, i) => {
+    body.tools = body.tools.map(tool => {
       const { cache_control, ...rest } = tool;
-      if (i === body.tools.length - 1) {
-        return { ...rest, cache_control: { type: "ephemeral", ttl: "1h" } };
+      if (rest.defer_loading) {
+        return rest;
       }
       return rest;
     });
+
+    for (let i = body.tools.length - 1; i >= 0; i--) {
+      const tool = body.tools[i];
+      if (!tool?.defer_loading) {
+        body.tools[i] = { ...tool, cache_control: { type: "ephemeral", ttl: "1h" } };
+        break;
+      }
+    }
 
     // Remove tools array and tool_choice if empty after filtering
     if (body.tools.length === 0) {

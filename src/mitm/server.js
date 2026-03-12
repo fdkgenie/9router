@@ -129,12 +129,38 @@ function extractModel(url, body) {
   try { return JSON.parse(body.toString()).model || null; } catch { return null; }
 }
 
+function normalizeModelKey(name) {
+  if (!name) return "";
+  return String(name)
+    .trim()
+    .toLowerCase()
+    .replace(/-\d{4}-\d{2}-\d{2}$/, "")
+    .replace(/[\s_]+/g, "-");
+}
+
 function getMappedModel(tool, model) {
   if (!model) return null;
   try {
     if (!fs.existsSync(DB_FILE)) return null;
     const db = JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
-    return db.mitmAlias?.[tool]?.[model] || null;
+    const toolMappings = db.mitmAlias?.[tool] || {};
+    const meta = toolMappings.__meta__ || {};
+
+    if (toolMappings[model]) return toolMappings[model];
+
+    const normalizedModel = normalizeModelKey(model);
+    for (const [alias, target] of Object.entries(toolMappings)) {
+      if (alias === "__meta__") continue;
+      if (normalizeModelKey(alias) === normalizedModel) {
+        return target;
+      }
+    }
+
+    if (meta.alwaysFallbackEnabled && meta.alwaysFallbackModel) {
+      return meta.alwaysFallbackModel;
+    }
+
+    return null;
   } catch {
     return null;
   }
