@@ -7,6 +7,7 @@ import {
   pollForToken 
 } from "@/lib/oauth/providers";
 import { createProviderConnection } from "@/models";
+import { autoFetchModels } from "@/lib/autoFetchModels";
 
 /**
  * Dynamic OAuth API Route
@@ -92,6 +93,14 @@ export async function POST(request, { params }) {
         testStatus: "active",
       });
 
+      // Auto-fetch models for the new connection
+      try {
+        await autoFetchModels(connection.id);
+      } catch (error) {
+        console.log("Failed to auto-fetch models:", error);
+        // Don't fail the connection creation if model fetching fails
+      }
+
       return NextResponse.json({ 
         success: true, 
         connection: {
@@ -137,6 +146,14 @@ export async function POST(request, { params }) {
             : null,
           testStatus: "active",
         });
+
+        // Auto-fetch models for the new connection
+        try {
+          await autoFetchModels(connection.id);
+        } catch (error) {
+          console.log("Failed to auto-fetch models:", error);
+          // Don't fail the connection creation if model fetching fails
+        }
 
         return NextResponse.json({ 
           success: true, 
